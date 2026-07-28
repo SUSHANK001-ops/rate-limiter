@@ -1,28 +1,28 @@
+const MemoryStore = require('../store/memory-store');
+
 class FixedWindowRateLimiter {
-  constructor({ limit, windowMs }) {
+  constructor({ limit, windowMs, store }) {
     if (!Number.isFinite(limit) || limit <= 0) {
       throw new TypeError('limit must be a positive number');
     }
-
     if (!Number.isFinite(windowMs) || windowMs <= 0) {
       throw new TypeError('windowMs must be a positive number');
     }
 
     this.limit = limit;
     this.windowMs = windowMs;
-    this.clients = new Map(); // one record per client
+    this.store = store || new MemoryStore(); // use provided store or default to memory
   }
 
   allow(key, now = Date.now()) {
-    let client = this.clients.get(key);
+    let client = this.store.get(key);
 
-    // if client is new OR their window has expired, reset them
     if (!client || now - client.windowStart >= this.windowMs) {
       client = { count: 0, windowStart: now };
     }
 
     if (client.count >= this.limit) {
-      this.clients.set(key, client);
+      this.store.set(key, client);
       return {
         allowed: false,
         remaining: 0,
@@ -31,7 +31,7 @@ class FixedWindowRateLimiter {
     }
 
     client.count += 1;
-    this.clients.set(key, client);
+    this.store.set(key, client);
 
     return {
       allowed: true,
@@ -41,16 +41,11 @@ class FixedWindowRateLimiter {
   }
 
   reset(key) {
-    this.clients.delete(key); // reset one specific client
+    this.store.delete(key);
   }
 
-  // call this periodically to prevent memory leak
   cleanup(now = Date.now()) {
-    for (const [key, client] of this.clients) {
-      if (now - client.windowStart >= this.windowMs) {
-        this.clients.delete(key);
-      }
-    }
+    this.store.cleanup(this.windowMs, now);
   }
 }
 
