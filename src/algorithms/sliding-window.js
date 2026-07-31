@@ -1,6 +1,6 @@
 
 
-const MemoryStore = require('../store/memory-store');
+const MemoryStore = require('../store/redis-store');
 
 class SlidingWindowRateLimiter {
   constructor({ limit, windowMs, store }) {
@@ -13,27 +13,16 @@ class SlidingWindowRateLimiter {
 
     this.limit = limit;
     this.windowMs = windowMs;
-    this.store = store || new MemoryStore();
+    this.store = store || new RedisStore();
   }
 
-  allow(key, now = Date.now()) {
-    let client = this.store.get(key);
 
-    // first time we see this client
-    if (!client) {
-      client = {
-        currentCount: 1,
-        previousCount: 0,
-        windowStart: now,
-      };
-      this.store.set(key, client);
-
-      return {
-        allowed: true,
-        remaining: this.limit - 1,
-        resetAt: now + this.windowMs,
-      };
-    }
+allow(key, now = Date.now()) {
+  // Redis store handles everything including the math
+  // Memory store still uses the in-memory logic
+  if (this.store instanceof RedisStore) {
+    return this.store.allow(key, this.windowMs, this.limit, now);
+  }
 
     const elapsed = now - client.windowStart;
 
